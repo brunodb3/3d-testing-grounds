@@ -1,32 +1,42 @@
-import * as Three from 'three';
+import * as THREE from 'three';
 
-import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader';
+import { VRButton } from 'three/examples/jsm/webxr/VRButton.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls';
 
 export class World {
-  scene!: Three.Scene;
-  threejs!: Three.WebGLRenderer;
-  camera!: Three.PerspectiveCamera;
+  options: { vr?: boolean };
 
-  mixers: Three.AnimationMixer[] = [];
-  clock: Three.Clock = new Three.Clock();
+  // by default, a 3DOF headset has a height offset of 1.6 (average human height)
+  heightOffset: number = 1.6;
 
-  lastAnimationTime?: number;
+  scene!: THREE.Scene;
+  animationFrames!: Function;
+  renderer!: THREE.WebGLRenderer;
+  camera!: THREE.PerspectiveCamera;
 
-  constructor() {
+  mixers: THREE.AnimationMixer[] = [];
+  clock: THREE.Clock = new THREE.Clock();
+
+  constructor(options: { vr?: boolean }) {
+    this.options = options;
     this.initialize();
   }
 
   initialize() {
-    this.threejs = new Three.WebGLRenderer();
+    this.loadRenderer();
 
-    this.threejs.shadowMap.enabled = true;
-    this.threejs.shadowMap.type = Three.PCFSoftShadowMap;
-    this.threejs.setPixelRatio(window.devicePixelRatio);
-    this.threejs.setSize(window.innerWidth, window.innerHeight);
+    this.animationFrames = this.options.vr
+      ? this.renderer.setAnimationLoop
+      : requestAnimationFrame;
 
-    document.body.appendChild(this.threejs.domElement);
+    this.scene = new THREE.Scene();
+
+    this.loadCamera();
+    this.loadLights();
+    this.loadSkyBox();
+    this.loadPlane();
+    this.loadX12MechModel();
 
     window.addEventListener(
       'resize',
@@ -36,12 +46,44 @@ export class World {
       false
     );
 
-    this.camera = new Three.PerspectiveCamera(60, 1920 / 1080, 1.0, 1000.0);
-    this.camera.position.set(0, 30, 50);
+    this.animate();
+  }
 
-    this.scene = new Three.Scene();
+  loadRenderer() {
+    this.renderer = new THREE.WebGLRenderer();
 
-    const directionalLight = new Three.DirectionalLight(0xffffff);
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.setPixelRatio(window.devicePixelRatio);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
+
+    document.body.appendChild(this.renderer.domElement);
+
+    if (this.options.vr) {
+      this.renderer.xr.enabled = true;
+      document.body.appendChild(VRButton.createButton(this.renderer));
+    }
+  }
+
+  loadCamera() {
+    this.camera = new THREE.PerspectiveCamera(
+      60,
+      window.innerWidth / window.innerHeight,
+      0.1,
+      500
+    );
+
+    this.camera.position.set(0, this.heightOffset, 0);
+
+    const controls = new OrbitControls(this.camera, this.renderer.domElement);
+    controls.target.set(0, this.heightOffset, 0);
+    controls.update();
+  }
+
+  loadLights() {
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    const directionalLight = new THREE.DirectionalLight(0xffffff);
+
     directionalLight.position.set(100, 100, 100);
     directionalLight.target.position.set(0, 0, 0);
     directionalLight.castShadow = true;
@@ -54,16 +96,13 @@ export class World {
     directionalLight.shadow.camera.right = -100;
     directionalLight.shadow.camera.top = 100;
     directionalLight.shadow.camera.bottom = -100;
+
     this.scene.add(directionalLight);
-
-    const ambientLight = new Three.AmbientLight(0x404040);
     this.scene.add(ambientLight);
+  }
 
-    const controls = new OrbitControls(this.camera, this.threejs.domElement);
-    controls.target.set(0, 10, 0);
-    controls.update();
-
-    const loader = new Three.CubeTextureLoader();
+  loadSkyBox() {
+    const loader = new THREE.CubeTextureLoader();
     const skybox = loader.load([
       '/skybox/sh_ft.png',
       '/skybox/sh_bk.png',
@@ -72,73 +111,53 @@ export class World {
       '/skybox/sh_rt.png',
       '/skybox/sh_lf.png',
     ]);
-    this.scene.background = skybox;
 
-    const plane = new Three.Mesh(
-      new Three.PlaneGeometry(100, 100, 10, 10),
-      new Three.MeshStandardMaterial({
+    this.scene.background = skybox;
+  }
+
+  loadPlane() {
+    const plane = new THREE.Mesh(
+      new THREE.PlaneGeometry(100, 100, 10, 10),
+      new THREE.MeshStandardMaterial({
         color: 0xffffff,
       })
     );
+
     plane.castShadow = false;
     plane.receiveShadow = true;
     plane.rotation.x = -Math.PI / 2;
-    this.scene.add(plane);
+    plane.position.set(0, -this.heightOffset, 0);
 
-    this.loadModel();
-    this.loadAnimatedModel();
-    this.animate();
+    this.scene.add(plane);
   }
 
-  loadModel() {
+  loadX12MechModel() {
     const loader = new GLTFLoader();
+
     loader.load('/models/x12 mech/scene.gltf', (x12mech) => {
       x12mech.scene.traverse((object3d) => {
         object3d.castShadow = true;
       });
 
+      x12mech.scene.position.set(-28, -this.heightOffset, 0);
+
       this.scene.add(x12mech.scene);
-    });
-  }
-
-  loadAnimatedModel() {
-    const loader = new FBXLoader();
-    loader.setPath('/models/ybot/');
-    loader.load('ybot.fbx', (ybot) => {
-      ybot.scale.setScalar(0.1);
-      ybot.traverse((object3d) => {
-        object3d.castShadow = true;
-      });
-
-      const animation = new FBXLoader();
-      animation.setPath('/models/animations/');
-      animation.load('Twist Dance.fbx', (dance) => {
-        const mixer = new Three.AnimationMixer(ybot);
-        this.mixers.push(mixer);
-
-        const idle = mixer.clipAction(dance.animations[0]);
-        idle.play();
-      });
-
-      this.scene.add(ybot);
     });
   }
 
   onWindowResize() {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
-    this.threejs.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(window.innerWidth, window.innerHeight);
   }
 
   animate() {
-    requestAnimationFrame(() => {
+    this.animationFrames(() => {
       this.animate();
     });
 
-    if (this.mixers) {
-      this.mixers.map((mixer) => mixer.update(this.clock.getDelta()));
-    }
+    this.mixers.map((mixer) => mixer.update(this.clock.getDelta()));
 
-    this.threejs.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.camera);
   }
 }
