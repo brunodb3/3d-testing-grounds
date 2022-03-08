@@ -65,12 +65,12 @@ export class World {
 
     const loader = new Three.CubeTextureLoader();
     const skybox = loader.load([
-      'src/resources/skybox/sh_ft.png',
-      'src/resources/skybox/sh_bk.png',
-      'src/resources/skybox/sh_up.png',
-      'src/resources/skybox/sh_dn.png',
-      'src/resources/skybox/sh_rt.png',
-      'src/resources/skybox/sh_lf.png',
+      '/skybox/sh_ft.png',
+      '/skybox/sh_bk.png',
+      '/skybox/sh_up.png',
+      '/skybox/sh_dn.png',
+      '/skybox/sh_rt.png',
+      '/skybox/sh_lf.png',
     ]);
     this.scene.background = skybox;
 
@@ -92,7 +92,7 @@ export class World {
 
   loadModel() {
     const loader = new GLTFLoader();
-    loader.load('src/resources/models/x12 mech/scene.gltf', (x12mech) => {
+    loader.load('/models/x12 mech/scene.gltf', (x12mech) => {
       x12mech.scene.traverse((object3d) => {
         object3d.castShadow = true;
       });
@@ -103,7 +103,7 @@ export class World {
 
   loadAnimatedModel() {
     const loader = new FBXLoader();
-    loader.setPath('src/resources/models/ybot/');
+    loader.setPath('/models/ybot/');
     loader.load('ybot.fbx', (ybot) => {
       ybot.scale.setScalar(0.1);
       ybot.traverse((object3d) => {
@@ -111,7 +111,7 @@ export class World {
       });
 
       const animation = new FBXLoader();
-      animation.setPath('src/resources/models/animations/');
+      animation.setPath('/models/animations/');
       animation.load('Twist Dance.fbx', (dance) => {
         const mixer = new Three.AnimationMixer(ybot);
         this.mixers.push(mixer);
